@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Сканер штрихкодов</title>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Полифил BarcodeDetector для iOS и старых браузеров -->
+    <script src="https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@0.9.20/dist/index.js"></script>
     <style>
         body {
             font-family: -apple-system, sans-serif;
@@ -13,23 +14,30 @@
             color: var(--tg-theme-text-color, #000);
             margin: 0;
             padding: 16px;
+            text-align: center;
         }
         h2 { margin-top: 0; }
-        #reader { width: 100%; max-width: 500px; margin: 0 auto; }
+        #video {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 12px;
+            background: #000;
+        }
         #result {
             margin-top: 16px;
             padding: 12px;
             border-radius: 8px;
             background: var(--tg-theme-secondary-bg-color, #f0f0f0);
             word-break: break-word;
+            min-height: 40px;
         }
         a { color: var(--tg-theme-link-color, #2481cc); }
     </style>
 </head>
 <body>
     <h2>📷 Сканируйте штрихкод</h2>
-    <div id="reader"></div>
-    <div id="result">Наведите камеру на штрихкод...</div>
+    <video id="video" autoplay playsinline muted></video>
+    <div id="result">Загрузка камеры...</div>
     <script src="scanner.js"></script>
 </body>
 </html>
