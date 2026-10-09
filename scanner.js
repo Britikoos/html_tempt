@@ -4,6 +4,12 @@ tg.expand();
 
 const resultEl = document.getElementById("result");
 const video = document.getElementById("video");
+
+// Ловим ВСЕ ошибки на странице
+window.addEventListener('error', (e) => {
+    resultEl.textContent = '❌ JS Error: ' + e.message;
+});
+
 let busy = false;
 let detector = null;
 
@@ -13,12 +19,13 @@ function log(msg) {
 }
 
 async function initDetector() {
-    // Ждём загрузки полифила (он подключается в index.html)
+    log("Проверяю BarcodeDetector...");
+    
     if (!("BarcodeDetector" in window)) {
-        log("Полифил не загружен. Ждём...");
+        log("BarcodeDetector не найден, жду полифил...");
         await new Promise(r => setTimeout(r, 2000));
         if (!("BarcodeDetector" in window)) {
-            log("❌ BarcodeDetector недоступен. Проверь подключение скрипта.");
+            log("❌ BarcodeDetector так и не появился. Полифил не загрузился.");
             return false;
         }
     }
@@ -30,21 +37,29 @@ async function initDetector() {
         log("✅ Детектор создан");
         return true;
     } catch (e) {
-        log("❌ Ошибка создания детектора: " + e.message);
+        log("❌ Ошибка детектора: " + e.message);
         return false;
     }
 }
 
 async function startCamera() {
-    log("Запрашиваю камеру...");
+    log("Проверяю доступ к камере...");
+    
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        log("❌ getUserMedia недоступен. Нужен HTTPS.");
+        return;
+    }
     
     try {
+        log("Запрашиваю камеру...");
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "environment" }
         });
+        log("✅ Камера получена");
+        
         video.srcObject = stream;
         await video.play();
-        log("✅ Камера запущена. Наведите на штрихкод...");
+        log("✅ Видео играет. Наведите на штрихкод...");
         
         setInterval(scanFrame, 300);
     } catch (err) {
@@ -58,31 +73,10 @@ async function scanFrame() {
         const barcodes = await detector.detect(video);
         if (barcodes.length > 0) {
             busy = true;
-            await handleScan(barcodes[0].rawValue);
+            log("🎯 Найден: " + barcodes[0].rawValue);
             setTimeout(() => { busy = false; }, 2000);
         }
-    } catch (e) {
-        // тихо игнорируем
-    }
-}
-
-async function handleScan(code) {
-    log(`🔍 Ищу: ${code}...`);
-    try {
-        const res = await fetch("/api/scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ "_auth": tg.initData, "barcode": code })
-        });
-        const data = await res.json();
-        if (data.ok && data.results.length > 0) {
-            resultEl.innerHTML = `✅ Найдено: <a href="${data.results[0].link}">${data.results[0].link}</a>`;
-        } else {
-            log(`❌ Ничего не найдено: ${code}`);
-        }
-    } catch (e) {
-        log("Ошибка API: " + e.message);
-    }
+    } catch (e) {}
 }
 
 (async () => {
