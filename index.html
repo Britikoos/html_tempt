@@ -5,12 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Сканер штрихкодов</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-    <!-- Полифилы через unpkg, порядок важен: zbar-wasm → barcode-detector-polyfill → scanner.js -->
-    <script defer src="https://unpkg.com/@undecaf/zbar-wasm@0.9.15/dist/index.js"></script>
-    <script defer src="https://unpkg.com/@undecaf/barcode-detector-polyfill@0.9.20/dist/index.js"></script>
-    <script defer src="scanner.js"></script>
-
     <style>
         body {
             font-family: -apple-system, sans-serif;
@@ -21,14 +15,35 @@
             text-align: center;
         }
         h2 { margin-top: 0; }
-        #video {
+
+        #preview {
             width: 100%;
             max-width: 500px;
             border-radius: 12px;
-            background: #000;
-            display: block;
-            margin: 0 auto;
+            margin: 12px auto;
+            display: none;
         }
+
+        #scanBtn {
+            display: block;
+            width: 100%;
+            max-width: 500px;
+            margin: 16px auto;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            background: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #fff);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        #scanBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         #result {
             margin-top: 16px;
             padding: 12px;
@@ -41,8 +56,11 @@
     </style>
 </head>
 <body>
-    <h2>📷 Сканируйте штрихкод</h2>
-    <video id="video" autoplay playsinline muted></video>
-    <div id="result">Загрузка...</div>
+    <h2>📷 Сканер штрихкодов</h2>
+    <button id="scanBtn">📸 Сделать фото штрихкода</button>
+    <img id="preview" alt="Превью">
+    <div id="result">Нажмите кнопку, чтобы сделать снимок</div>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" hidden>
+    <script src="scanner.js"></script>
 </body>
 </html>
