@@ -7,16 +7,6 @@ const scanBtn = document.getElementById("scanBtn");
 const fileInput = document.getElementById("fileInput");
 const preview = document.getElementById("preview");
 
-// Проверяем, что все элементы найдены
-console.log("resultEl:", resultEl);
-console.log("scanBtn:", scanBtn);
-console.log("fileInput:", fileInput);
-console.log("preview:", preview);
-
-if (!resultEl || !scanBtn || !fileInput || !preview) {
-    document.body.innerHTML = "<h2>Ошибка: не все элементы найдены в HTML</h2>";
-}
-
 let busy = false;
 
 function log(msg) {
@@ -24,72 +14,48 @@ function log(msg) {
     if (resultEl) resultEl.innerHTML = msg;
 }
 
-scanBtn?.addEventListener("click", () => {
+scanBtn.addEventListener("click", () => {
     if (busy) return;
-    log("Кнопка нажата, открываю камеру...");
-    try {
-        fileInput.click();
-    } catch (e) {
-        log("Ошибка при клике на input: " + e.message);
-    }
+    log("Открываю камеру...");
+    fileInput.click();
 });
 
-fileInput?.addEventListener("change", async (e) => {
-    log("Файл выбран, начинаю обработку...");
-
+fileInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) {
         log("Файл не выбран");
         return;
     }
 
-    log("Файл: " + file.name + ", размер: " + file.size);
-
     busy = true;
     scanBtn.disabled = true;
     scanBtn.textContent = "⏳ Обрабатываю...";
 
     try {
-        log("Создаю превью...");
         preview.src = URL.createObjectURL(file);
         preview.style.display = "block";
-        log("Превью создано");
-    } catch (e) {
-        log("Ошибка при создании превью: " + e.message);
-        busy = false;
-        scanBtn.disabled = false;
-        scanBtn.textContent = "📸 Сделать фото штрихкода";
-        return;
+    } catch (err) {
+        log("Ошибка превью: " + err.message);
     }
 
+    log("📤 Отправляю фото на сервер...");
+
     try {
-        log("Формирую FormData...");
-
-        if (typeof tg.initData !== "string") {
-            log("❌ tg.initData не строка: " + typeof tg.initData);
-            return;
-        }
-
         const formData = new FormData();
-        formData.append("_auth", tg.initData);
+        formData.append("_auth", tg.initData || "");
         formData.append("photo", file, "scan.jpg");
-
-        log("Отправляю на сервер...");
 
         const res = await fetch("/api/scan-photo", {
             method: "POST",
             body: formData
         });
 
-        log("Ответ получен, читаю текст...");
         const text = await res.text();
-
-        log("Парсю JSON...");
         let data;
         try {
             data = JSON.parse(text);
         } catch {
-            log("❌ Сервер вернул не JSON:<br>" + text.slice(0, 300));
+            log(`❌ Сервер вернул не JSON (HTTP ${res.status}):<br>${text.slice(0, 300)}`);
             return;
         }
 
@@ -98,13 +64,16 @@ fileInput?.addEventListener("change", async (e) => {
                 .map(r => `<a href="${r.link}" target="_blank">📄 Пост от ${r.date.slice(0, 10)}</a>`)
                 .join("<br>");
             log(`<b>✅ Штрихкод: ${data.barcode}</b><br>Найдено ${data.results.length}:<br>${list}`);
+            tg.HapticFeedback.notificationOccurred("success");
         } else if (data.ok) {
             log(`❌ Штрихкод <b>${data.barcode}</b> распознан, но в базе не найден`);
+            tg.HapticFeedback.notificationOccurred("error");
         } else {
-            log(`❌ Не удалось распознать штрихкод.`);
+            log(`❌ ${data.error || "Не удалось распознать штрихкод"}`);
+            tg.HapticFeedback.notificationOccurred("error");
         }
     } catch (err) {
-        log("❌ Ошибка запроса: " + err.message);
+        log("Ошибка запроса: " + err.message);
     } finally {
         busy = false;
         scanBtn.disabled = false;
