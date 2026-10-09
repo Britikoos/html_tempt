@@ -3,24 +3,65 @@ tg.ready();
 tg.expand();
 
 const resultEl = document.getElementById("result");
-let busy = false;  // защита от повторного сканирования
+const video = document.getElementById("video");
+let busy = false;
+let detector = null;
+let scanInterval = null;
 
-const scanner = new Html5QrcodeScanner("reader", {
-    fps: 10,
-    qrbox: { width: 250, height: 250 },
-    formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128
-    ]
-});
+// Проверяем поддержку BarcodeDetector
+const hasNativeDetector = "BarcodeDetector" in window;
 
-async function onScanSuccess(decodedText) {
-    if (busy) return;
+async function initDetector() {
+    // Если браузер не поддерживает — используем полифил
+    if (!hasNativeDetector) {
+        // Полифил подключается в index.html через <script>
+        // После его загрузки BarcodeDetector становится доступен глобально
+        await window.BarcodeDetectorPolyfill?.ready;
+    }
+    
+    detector = new BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"]
+    });
+}
+
+async function startCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: "environment",  // задняя камера
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        });
+        video.srcObject = stream;
+        await video.play();
+        
+        // Запускаем цикл сканирования
+        scanInterval = setInterval(scanFrame, 300);  // каждые 300 мс
+        resultEl.textContent = "Наведите камеру на штрихкод...";
+    } catch (err) {
+        resultEl.textContent = "❌ Нет доступа к камере: " + err.message;
+    }
+}
+
+async function scanFrame() {
+    if (busy || !detector || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+    try {
+        const barcodes = await detector.detect(video);
+        if (barcodes.length > 0) {
+            const code = barcodes[0].rawValue;
+            await handleScan(code);
+        }
+    } catch (err) {
+        // Игнорируем ошибки кадров без штрихкода
+    }
+}
+
+async function handleScan(decodedText) {
     busy = true;
     resultEl.innerHTML = `🔍 Ищу: <b>${decodedText}</b>...`;
+    tg.HapticFeedback.impactOccurred("light");
 
     try {
         const response = await fetch("/api/scan", {
@@ -47,12 +88,12 @@ async function onScanSuccess(decodedText) {
         resultEl.innerText = "Ошибка запроса: " + err.message;
     }
 
-    // Разблокировка через 2 секунды, чтобы можно было сканировать снова
+    // Разблокировка через 2 секунды
     setTimeout(() => { busy = false; }, 2000);
 }
 
-function onScanError(err) {
-    // Молча игнорируем ошибки распознавания (кадры без штрихкода)
-}
-
-scanner.render(onScanSuccess, onScanError);
+// Инициализация
+(async () => {
+    await initDetector();
+    await startCamera();
+})();
