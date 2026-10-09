@@ -3,106 +3,46 @@ tg.ready();
 tg.expand();
 
 const resultEl = document.getElementById("result");
-const video = document.getElementById("video");
+const scanBtn = document.getElementById("scanBtn");
+const fileInput = document.getElementById("fileInput");
+const preview = document.getElementById("preview");
 
 let busy = false;
-let detector = null;
 
 function log(msg) {
     console.log(msg);
-    resultEl.textContent = msg;
+    resultEl.innerHTML = msg;
 }
 
-// Ловим все ошибки на странице
-window.addEventListener("error", (e) => {
-    log("❌ JS Error: " + e.message);
+// Кнопка открывает камеру
+scanBtn.addEventListener("click", () => {
+    if (busy) return;
+    fileInput.click();
 });
 
-async function initDetector() {
-    log("Проверяю BarcodeDetector...");
+// Пользователь сделал фото
+fileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    // Если полифил загрузился, но не зарегистрировался автоматически — ставим вручную
-    if (!("BarcodeDetector" in window)) {
-        if (window.BarcodeDetectorPolyfill) {
-            window.BarcodeDetector = window.BarcodeDetectorPolyfill;
-            log("Полифил установлен вручную");
-        } else if (window.barcodeDetectorPolyfill) {
-            window.BarcodeDetector = window.barcodeDetectorPolyfill.BarcodeDetectorPolyfill;
-            log("Полифил установлен вручную (вариант 2)");
-        }
-    }
+    busy = true;
+    scanBtn.disabled = true;
+    scanBtn.textContent = "⏳ Обрабатываю...";
 
-    // Ждём до 5 секунд, пока полифил догрузится
-    for (let i = 0; i < 10; i++) {
-        if ("BarcodeDetector" in window) break;
-        await new Promise(r => setTimeout(r, 500));
-    }
+    // Показываем превью
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
 
-    if (!("BarcodeDetector" in window)) {
-        log("❌ BarcodeDetector недоступен. Проверь подключение скрипта.");
-        return false;
-    }
+    log("📤 Отправляю фото на сервер...");
 
     try {
-        detector = new BarcodeDetector({
-            formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"]
-        });
-        log("✅ Детектор создан");
-        return true;
-    } catch (e) {
-        log("❌ Ошибка детектора: " + e.message);
-        return false;
-    }
-}
+        const formData = new FormData();
+        formData.append("_auth", tg.initData);
+        formData.append("photo", file);
 
-async function startCamera() {
-    log("Запрашиваю камеру...");
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        log("❌ getUserMedia недоступен. Нужен HTTPS.");
-        return;
-    }
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" }
-        });
-        video.srcObject = stream;
-        await video.play();
-        log("✅ Камера запущена. Наведите на штрихкод...");
-
-        setInterval(scanFrame, 300);
-    } catch (err) {
-        log("❌ Камера: " + err.name + " — " + err.message);
-    }
-}
-
-async function scanFrame() {
-    if (busy || !detector || video.readyState !== video.HAVE_ENOUGH_DATA) return;
-
-    try {
-        const barcodes = await detector.detect(video);
-        if (barcodes.length > 0) {
-            busy = true;
-            await handleScan(barcodes[0].rawValue);
-            setTimeout(() => { busy = false; }, 2000);
-        }
-    } catch (e) {
-        // тихо игнорируем кадры без штрихкода
-    }
-}
-
-async function handleScan(code) {
-    log(`🔍 Ищу: ${code}...`);
-
-    try {
-        const res = await fetch("/api/scan", {
+        const res = await fetch("/api/scan-photo", {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-                "_auth": tg.initData,
-                "barcode": code
-            })
+            body: formData
         });
         const data = await res.json();
 
@@ -110,19 +50,21 @@ async function handleScan(code) {
             const list = data.results
                 .map(r => `<a href="${r.link}" target="_blank">📄 Пост от ${r.date.slice(0, 10)}</a>`)
                 .join("<br>");
-            resultEl.innerHTML = `<b>✅ Найдено ${data.results.length}:</b><br>${list}`;
+            log(`<b>✅ Штрихкод: ${data.barcode}</b><br>Найдено ${data.results.length}:<br>${list}`);
             tg.HapticFeedback.notificationOccurred("success");
+        } else if (data.ok) {
+            log(`❌ Штрихкод <b>${data.barcode}</b> распознан, но в базе не найден`);
+            tg.HapticFeedback.notificationOccurred("error");
         } else {
-            log(`❌ По штрихкоду ${code} ничего не найдено`);
+            log(`❌ Не удалось распознать штрихкод. Попробуйте ещё раз.`);
             tg.HapticFeedback.notificationOccurred("error");
         }
     } catch (err) {
-        log("Ошибка API: " + err.message);
+        log("Ошибка запроса: " + err.message);
+    } finally {
+        busy = false;
+        scanBtn.disabled = false;
+        scanBtn.textContent = "📸 Сделать фото штрихкода";
+        fileInput.value = "";  // сброс, чтобы можно было выбрать тот же файл
     }
-}
-
-// Запуск
-(async () => {
-    const ok = await initDetector();
-    if (ok) await startCamera();
-})();
+});
